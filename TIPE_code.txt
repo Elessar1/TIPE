@@ -1,0 +1,668 @@
+type graph_unitaire = int list array;;
+
+type weighted_graph = int *int list array;;
+
+type tuyeau = int * int;;
+
+type  int_file =int list * int list;;
+let file ()= [],[]
+;;
+let idt = function x->x
+;;
+
+let timeur f x=
+    let t = Sys.time () in
+    let _ = f x in
+    Sys.time()-.t
+;;
+
+let rec first_true i a =
+    if i= Array.length a then None else 
+        if a.(i) then Some(i) else first_true (i+1) a
+;;
+
+exception Fuck of string;;
+
+let rec pop f= match f with
+    |[],[] -> None, f
+    |[],l-> pop ((List.rev l), [])
+    |x::xs,l-> Some(x), (xs,l)
+;;
+
+let push (l,xs) x= (l, x::xs)
+;;
+
+let print_intArray a= 
+    print_endline "[|";
+    Array.iter (fun x -> Printf.printf "%d ;" x) a;
+    print_endline "" ;
+    print_endline "|]"
+;;
+let print_intList l =
+    print_string "[";
+    let rec aux = function |[]-> print_endline "]" |x::xs ->begin Printf.printf "%d ;" x; aux xs end in
+    aux l;
+;;
+let cap g u v=
+    let rec aux l=
+        match l with
+        | [] -> 0
+        |(x, p)::xs ->if v = x then p else aux xs in
+    aux g.(u)
+;;
+
+let radom_n n =
+    let rand =Random.State.make_self_init () in
+    (Random.State.int rand n);;
+
+let print_graphe g=
+    print_endline "[|";
+    let n = Array.length g in
+    let rec pr l =
+        match l with
+        |[]->()
+        |(x,p)::xs->Printf.printf "(%d, %d) ;" x p; pr xs
+    in
+    for i = 0 to n-1 do
+        print_char '[';
+        pr g.(i);
+        print_endline "]";
+    done;
+    print_endline "|]";
+;;
+
+
+let topological_order1 g s=
+    let l = ref [] in
+    let n = Array.length g in
+    let vus = Array.make n false in
+    vus.(s)<- true;
+    let rec dfs u= l:= u:: !l;
+        List.iter (fun x-> if not vus.(x) then dfs x) g.(u)
+    in
+    dfs s;
+    !l
+;;
+
+let topological_order2 g s=
+    let l = ref [] in
+    let n = Array.length g in
+    let vus = Array.make n false in
+
+    let f' = ref (file ()) in
+        let rec dfs u= 
+        if not vus.(u) then begin
+            l:= (u) :: !l;
+            vus.(u)<- true;
+            List.iter (fun (x,_)->if not vus.(x) then  f':= push !f' x) g.(u);
+            match pop !f' with
+            |None,_ -> ()
+            |Some(x), h-> f':= h; dfs x 
+        end
+    in
+    dfs s;
+    for i = 0 to n-1 do dfs i done;
+
+    List.rev !l
+;;
+
+let rec remove_from l u=
+    match l with
+    |[] -> l
+    |x::xs-> if u = x then remove_from xs u else x::(remove_from xs u)
+;;
+
+
+
+let ford_fulkerson s t g=
+(*calcule le flot maximal du sommet s au sommet t dans un graphe g; ne marche pas :'( *)
+
+    (*Printf.printf "debut f_f de %d a %d\n" s t;*)
+
+    let n = Array.length g in
+    let residuel = Array.init n (fun i->List.map (fun (x,q)-> (x, q, 0)) g.(i)) in
+    let flow = ref 0 in
+    
+    let visites = Array.make n true in
+    visites.(s)<-false;
+    
+    let rec chemin_augmentant depart =
+        let f = function
+            (j, q, flo)-> if flo<q && visites.(j) then 
+                begin 
+                    visites.(j)<-false;
+                    if j= t then Some ([j],q-flo)
+                        else let c = chemin_augmentant j in
+                        visites.(j)<-true;
+                        match c with
+                        |None->None
+                        |Some(l, capa) -> Some (j::l, min capa (q-flo))
+                end
+                    else None 
+        in
+        let aux opt1 deb = match opt1 with
+            |None->f deb
+            |Some(x,y)->Some(x,y) 
+        in           
+        List.fold_left aux None residuel.(depart)
+    in
+        
+    let rec mise_a_jour1 d l c=
+            match l with
+            |[]->()
+            |x::xs->residuel.(d)<-List.map (fun (y,q,flo)->if x = y then (y,q,flo+c) else (y,q,flo) ) residuel.(d);
+                    residuel.(x)<-List.map (fun (y,q,flo)->if d = y then (y,q,flo-c) else (y,q,flo) ) residuel.(x);
+                    mise_a_jour1 x xs c;
+        in
+     
+    
+    (*let rec mise_a_jour2 d l=
+            let rec flo k =
+                match k with
+                |[]|[_]->max_int
+                |x::y::ys-> min (flo ys) (cap g x y)
+            in
+            let augm = flo (d::l) in
+            match l with
+            |[]->()
+            |x::xs->residuel.(d)<-List.map (fun (y,q,flo)->if x = y then (y,q,flo+augm) else (y,q,flo) ) residuel.(d);
+                    residuel.(x)<-List.map (fun (y,q,flo)->if d = y then (y,q,flo-augm) else (y,q,flo) ) residuel.(x);
+                    mise_a_jour2 x xs;
+        in *)
+        
+    let b =ref true in 
+    let augmentation =ref (chemin_augmentant s) in
+
+    while !b do
+        match!augmentation with
+        |Some(l,c)->begin mise_a_jour1 s l c;
+            flow := !flow + c;
+            for i= 0 to n-1 do visites.(i)<-true done;
+            visites.(s)<-false;
+            augmentation:= chemin_augmentant s
+            end
+        |None->b := false
+    done;
+    !flow
+;;
+
+let k_arete_connectivite_naif g=
+
+    (*calcule le degrès de connexité par arrète de manière naïve*)
+    (*print_endline "debut k_arete_conectivite";*)
+
+    if g.(0)=[]then 0 else
+    let flow = ref max_int in
+    for i = 1 to Array.length g -1 do
+        (*print_endline "f_f appel";*)
+        let x =ford_fulkerson 0 i g in
+        (*print_int x; print_endline "";*)
+        if !flow > x then begin
+            flow := x;
+            end
+    done;
+
+    (*print_endline "fin k_arete_conectivite";*)
+    !flow
+;;
+
+let graph_generator n p o w= 
+    (*créé la matrice d'adjacence d'un graphe à n sommets 
+    remplie à p%,non orienté si o = 1, direct si o = -1, weighted si w>1 (poids de 1 à w)*)
+    let g1 = Array.make_matrix n n 0 in
+    let vol = ref 1 in
+    for i = 0 to n-1 do
+        for j=0 to i-1 do
+
+            let k = ref (radom_n 100) in
+
+            vol := (radom_n w)+1;
+            if o = -1 then begin
+                let cote = radom_n 2 in
+                if p> !k then begin
+                    if cote = 1 then g1.(i).(j)<- !vol
+                    else g1.(j).(i)<- !vol 
+                end ; 
+            end;
+
+            if p> !k && o>= 0 then g1.(i).(j)<- !vol;
+            if o=0 then begin k := (radom_n 100); vol := (radom_n w)+1 end;
+            if p> !k && o>= 0 then g1.(j).(i)<- !vol;
+
+            done;
+        done;
+    g1
+;;
+
+let convert_graph g= 
+    (*convertit un graphe réprésenté en matrices d'adjacence en sa représentation en int list array*)
+    let n = Array.length g in
+    let g2 = Array.make n [] in
+    for i = 0 to n-1 do
+        for j= 0 to n-1 do
+            if g.(i).(j)=1 then g2.(i)<-j::g2.(i)
+        done;
+    done;
+    for i = 0 to n-1 do
+        g2.(i)<-List.rev g2.(i) done;
+    g2
+;;
+let convert_graph_weighted g= 
+    (*convertit un graphe réprésenté en matrices d'adjacence en sa représentation en int list array*)
+    let n = Array.length g in
+    let g2 = Array.make n [] in
+    for i = 0 to n-1 do
+        for j= 0 to n-1 do
+            let p =g.(i).(j)in
+            if p>0 then g2.(i)<-(j, p)::g2.(i)
+        done;
+    done;
+    for i = 0 to n-1 do
+        g2.(i)<-List.rev g2.(i) done;
+    g2
+;;
+
+
+let adjacency_order g =
+    let n = Array.length g in
+    let vus = Array.make n false in
+    let order = Array.make n 0 in
+    let id = ref 0 in
+    let rec dfs u =
+        if not vus.(u) then begin
+            vus.(u)<-true;
+            order.(!id)<- u;
+            incr id;
+            List.iter dfs g.(u);
+        end
+    in
+    
+    for i = 0 to n-1 do dfs i done;
+    order
+;;
+
+let contract g i j=
+    Printf.printf "contracte %d et %d \n" i j;
+    let a = min i j in
+    let b = max i j in
+    let n = Array.length g in
+    let nouv = Array.make (n-1) [] in
+    let rec fuse l k =
+        match l,k with
+        |(x,p1)::xs,(y,p2)::ys-> if x = y then (x,p1+p2)::fuse xs ys
+            else if x<y then (x,p1)::fuse xs k
+            else (y,p2):: fuse l ys
+        |[],_->k
+        |_,[]->l
+    in
+
+    let rec redirige l nb=
+        match l with
+        |[]->[], 0
+        |(x, p)::xs-> if x = a then let k, pb = redirige xs 0 in (x, p+pb)::k, -1
+                else if x = b then l, p
+                else if x>b then l,0
+                else redirige xs 0
+    in
+
+    nouv.(a)<- fuse g.(a) g.(b);
+    for k = 0 to n-1 do
+        let l,_ = redirige g.(k) 0 in
+        if k<b then nouv.(k)<- l
+        else if k > b then nouv.(k-1)<-l;
+    done;
+    nouv
+;;
+            
+let preflow_push g s t = 
+    let n = Array.length g in
+    let residuel = Array.make n [] in
+    let excedent = Array.make n 0 in
+    excedent.(s)<-max_int;
+
+    let hauteur = Array.make n 0 in
+    hauteur.(s)<-n;
+
+    let distribue u = List.iter (fun (v, c) -> 
+        residuel.(u)<-(v, c, 0)::residuel.(u);
+        residuel.(v)<-(u, 0, 0)::residuel.(v)) 
+        g.(u)
+    in
+    for i = 0 to n-1 do distribue i done;
+
+    
+    let poussage u arc =
+        let v, c, f = arc in
+        let m = min excedent.(u) (c-f) in
+        if m = 0 then () else begin
+            excedent.(u)<-excedent.(u) - m;
+            excedent.(v)<-excedent.(v) + m;
+            residuel.(u)<-List.map (fun (y,q,flo)->if v = y then (y,q,flo+m) else (y,q,flo) ) residuel.(u);
+            residuel.(v)<-List.map (fun (y,q,flo)->if u = y then (y,q,flo-m) else (y,q,flo) ) residuel.(v); 
+        end
+    in
+
+    let reetiquete u =
+        if excedent.(u)>0 then 
+            hauteur.(u)<- 1+ List.fold_left (fun i (v,c,f)-> if c>f then min v i else 0) 0 (residuel.(u));
+    in
+
+    let dechgarge u =
+        while excedent.(u) > 0 do
+            List.iter (fun k-> poussage u k) residuel.(u);
+            reetiquete u;
+        done;
+    in
+
+    List.iter (fun k-> poussage s k) residuel.(s);
+
+    let k = ref (topological_order2 g s) in
+
+    k:= remove_from !k s;
+    k:= remove_from !k t;
+
+
+    let rec operate liste =
+
+        match liste with
+        |[] -> ()
+        |x::xs -> let h = hauteur.(x) in
+            if excedent.(x)>0 then begin (*Printf.printf "decharge %d \n" x; *)
+                dechgarge x end;
+            if hauteur.(x)>h then begin k:= x::xs; operate !k end
+            else operate xs
+    in
+
+    operate !k; 
+
+    let final = Array.init n (fun i -> List.map (fun (x,_,f)->(x,f)) residuel.(i)) in
+
+    let flow = List.fold_left (fun i (_,_,x)-> i+x) 0 (residuel.(t)) in
+    final, -flow
+
+;;
+
+
+exception Reussite of int;;
+
+    
+let hao_orlin g s=
+(*calcule min-cut à partir d'un preflow_push modifié*)
+
+
+
+    let n = Array.length g in
+    let arr_id = Array.init n idt in
+    let excess = Array.make n 0 in
+    let dist = Array.make n 0 in
+    let awoken = Array.make n true in
+    let sources = ref [0] in
+    let best_value = ref max_int in
+    let n_priv_s = Hashtbl.create (n-1) in
+    for i = 1 to n-1 do Hashtbl.add n_priv_s i i done;    
+    let dormant_sets = Hashtbl.create (n/2) in
+    let nb_dormant_max = ref 0 in
+
+
+    (*cree le graphe residuel*)
+    let residuel = Array.init n (fun i->List.map (fun (x,q)-> (x, q, 0)) g.(i)) in
+    
+
+(*FONCTION DE POUSSAGE*)
+    let poussage u arc =
+        let v, c, f = arc in
+        let m = min excess.(u) (c-f) in
+        if m = 0 then () else begin
+            (*Printf.printf "pousse %d depuis %d vers %d \n" m u v ;*)
+
+            excess.(u)<-excess.(u) - m;
+            excess.(v)<-excess.(v) + m;
+            residuel.(u)<-List.map (fun (y,q,flo)->if v = y then (y,q,flo+m) else (y,q,flo) ) residuel.(u);
+            residuel.(v)<-List.map (fun (y,q,flo)->if u = y then (y,q,flo-m) else (y,q,flo) ) residuel.(v);
+        end
+    in
+
+    (*initialize le flot en saturant les voisins de S*)
+    
+    let reset_residuel ()= 
+        print_endline "debut reset";
+        print_string "sources : "; print_intList !sources;
+        for i = 0 to n-1 do excess.(i)<-0 done;
+        List.iter (fun x-> excess.(x)<- 1_000; dist.(x)<-n) !sources;
+        for i = 0 to n-1 do
+            residuel.(i)<-List.map (fun (x,q)-> (x, q, 0)) g.(i);
+        done;
+        for i = 0 to n-1 do
+            let rec f u l=
+                match l with
+                |[] -> ()
+                |(v, c)::xs -> 
+                    if not (List.exists (fun (x,_)-> x=u) g.(v)) then residuel.(v)<-(u,0,0) :: residuel.(v); f u xs
+            in
+            f i g.(i);
+        done;
+
+
+        List.iter (fun x -> 
+            List.iter (fun (v,q,f)->
+                (*if not (List.exists (fun y->y= v)  !sources) then*) poussage x (v,q,f)) 
+                residuel.(x)) 
+            !sources ;
+
+        
+        for i = 1 to n do
+           List.iter (fun x -> 
+            List.iter (fun k->
+                poussage s k) 
+                residuel.(x)) 
+            (Hashtbl.find_all dormant_sets (i)) ;
+        done;
+
+        print_endline "fin reset"; 
+        
+
+
+    in
+    reset_residuel();
+
+    awoken.(0)<-false;
+    let cut = ref awoken in
+    let sink = ref (n-1) in
+    for i = 0 to n-1 do
+        if i <> !sink then dist.(i)<-1
+        done;
+    
+    (*fonctions auxiliaires*)
+    let rec unique_awake_dist u i= 
+        if u=i then (if i=n-1 then true else unique_awake_dist u (i+1))
+    else 
+        ((if awoken.(i)then  dist.(i) <> dist.(u) else true) && (if i<n-1 then unique_awake_dist u (i+1) else true))
+    in
+
+    let rec find_sortant_admissible l u=
+        match l with
+        |[] -> None
+        |(v, q, f)::xs-> if awoken.(v) && dist.(v) +1 = dist.(u) && f<q then Some (v, q, f) else find_sortant_admissible xs u
+    in
+
+    let rec premier_actif i =
+        if i >= n then None else 
+        if i<> !sink && awoken.(i) && excess.(i)>0 then Some(i) else premier_actif (i+1)
+    in
+
+    let rec exists_arc_sortant l =
+        match l with
+        |[]->false
+        |(v, q, f)::xs-> (awoken.(v)&& f<q) || exists_arc_sortant xs
+    in
+    let rec min_d_fils l =
+        match l with
+        |[] -> max_int
+        |(v, q, f)::xs-> min (min_d_fils xs) (if q>f && awoken.(v) then dist.(v) +1 else max_int)
+    in
+    
+    let relable u =
+        if unique_awake_dist u 0 then begin
+            incr nb_dormant_max;
+            for i = 0 to n-1 do
+                if awoken.(i) && dist.(i)>=dist.(u) then begin 
+                    Hashtbl.add dormant_sets (!nb_dormant_max) i;
+                    awoken.(i)<-false
+                end
+            done;
+        end
+        else if not (exists_arc_sortant residuel.(u)) then begin
+            incr nb_dormant_max;
+            Hashtbl.add dormant_sets (!nb_dormant_max) u;
+            awoken.(u)<-false
+        end
+        else dist.(u)<- min_d_fils residuel.(u); 
+    in
+
+
+    let select_new_sink () =
+        let t = !sink in
+
+        awoken.(t)<-false;
+        Hashtbl.add dormant_sets 0 t;
+        sources := t:: !sources;
+        Hashtbl.remove n_priv_s t;
+
+        if List.length !sources = n then raise (Reussite 0);
+
+        if not (Array.exists idt awoken) then begin
+            Printf.printf "W vide, on reralume a partir de %d\n" t;
+            let new_w = Hashtbl.find_all dormant_sets !nb_dormant_max in
+            List.iter (fun x -> awoken.(x)<- true) new_w;
+            List.iter (fun x-> Hashtbl.remove dormant_sets !nb_dormant_max;Printf.printf "Awoken : %d\n" x) new_w;
+            nb_dormant_max := !nb_dormant_max -1;
+            print_string "sources : ";print_intList !sources;
+            (*print_int !nb_dormant_max; print_newline () ;*)
+            print_intArray (Array.map (fun b-> if b then 1 else 0) awoken);
+        end;
+        
+        (*EXPERIMENTAL*)
+        reset_residuel ();
+        (*EXPERIMENTAL*)
+
+        let _,sn=Array.fold_left (fun (m,i) x-> if awoken.(x) && m>= dist.(x) then 
+                (dist.(x),x) else (m,i) ) (n,t) arr_id in
+        sink := sn;
+        print_intArray dist;
+        Printf.printf "Nouveau sink : %d\n" !sink;
+    in
+
+    let u_d_w () = 
+        let nb = ref 0 in
+        for i = 0 to n-1 do
+            List.iter (fun (j, q)->if not awoken.(i) && awoken.(j) then nb:= q+ !nb) g.(i)
+        done;
+        !nb
+    in
+
+
+    (*La boucle principale commence*)
+    while List.length !sources < n do
+        let b = ref true in
+        while !b do
+            print_intArray excess;
+
+            (*print_intArray (Array.map (fun b-> if b then 1 else 0) awoken);*)
+            match premier_actif 0 with
+            |None -> b:= false
+            |Some(i) -> begin match find_sortant_admissible residuel.(i) i with
+                |None ->begin (*Printf.printf "relable %d\n" i;*) relable i; 
+                    (*print_intArray (Array.map (fun x-> if x then 1 else 0) awoken);print_intArray dist*) end
+                |Some(v, q, f)-> poussage i (v,q,f) end;
+        done;
+        if Array.exists idt awoken && Array.exists (fun x->not x) awoken then begin
+            let u = u_d_w () in
+            (*tests*)
+            (*Printf.printf "cut trouve : %d\n" u;*)
+            print_intArray excess;
+            print_intArray (Array.map (fun x-> if x then 1 else 0) awoken);
+            (*fin de tests*)
+            if !best_value > u then begin cut := Array.copy awoken; best_value:= u end; 
+        end;
+        try select_new_sink() with Reussite (_)-> Printf.printf "sortie de boucle, sink etait %d\n" !sink;
+        
+    done;
+
+    !cut, !best_value
+    
+;;
+
+
+
+let find_false n=
+    let limite = ref 0 in
+    let a = ref 0 in
+    let b = ref 0 in
+    let g = ref [||] in
+    while !a = !b && !limite<n do
+        print_endline "//////NOUVEAU TEST/////";
+        g := (convert_graph_weighted (graph_generator 10 30 (1) 6)) ;        
+        print_graphe !g;
+        a :=k_arete_connectivite_naif  !g ;
+
+        print_endline "//////DEBUT HAO_ORLIN/////";
+
+        let split, x =hao_orlin !g 0 in
+        b:= x;
+        print_intArray (Array.map (fun b-> if b then 1 else 0)split);
+
+        incr limite;
+        done;
+    print_graphe !g ;
+    Printf.printf "nombre d'essais : %d\n" !limite;
+    Printf.printf "réussite : %B, avec naif : %d et hao_orlin : %d" (!a= !b)  !a !b;
+;;
+
+let calcule (prog, k) =
+    Printf.printf "calcule pour %d graphes\n" k;
+    let limite = ref 0 in
+    let g = ref [||] in
+    while !limite<k do
+        g := (convert_graph_weighted (graph_generator 30 15 (1) 6)) ;
+        let _ = prog !g in
+    incr limite;
+    done
+;;
+
+let compare_t n k=
+    Printf.printf "debut comparaison\n";
+    let limite = ref 0 in
+    let a = ref 0. in
+    let b = ref 0. in
+    while !limite<n do
+        print_int !limite;
+        let ia =timeur calcule (k_arete_connectivite_naif, k) in
+        let ib = timeur calcule (hao_orlin, k) in
+
+        Printf.printf "essai n°%d, a = %f, b =%f\n" !limite ia ib ;
+        a:= !a+.ia;
+        b:= !b+.ib;
+
+        incr limite;
+    done;
+    Printf.printf "nombre d'essais : %d\n" (!limite * k);
+    Printf.printf "temps naif : %f et temps hao_orlin : %f"  !a !b;
+;;
+
+compare_t 10 5;;
+
+(*let g= convert_graph_weighted (graph_generator 6 30 (1) 3);;
+
+print_graphe g;;
+
+let resi, f = hao_orlin g 0 in
+print_intArray (Array.map (fun b-> if b then 1 else 0) resi); print_int f;print_newline ();
+print_graphe g;
+let conect = k_arete_connectivite_naif g in
+print_int conect;;
+print_endline "";;
+let gl = chain_representation g ;;
+
+
+
+List.iter print_graphe_unitaire gl;;*)
